@@ -1,250 +1,182 @@
-
 # Universal Data Connector
 
-## 🎯 Assignment Overview
-
-Build a production-quality **Universal Data Connector** using FastAPI that provides a unified interface for an LLM to access different data sources through function calling. The connector must be intelligent enough to identify data types, apply business rules, and optimize responses for voice conversations where bandwidth and latency matter.
-
-### Business Context
-You're building this for a SaaS company where customers need to query their data (CRM, support tickets, analytics) through voice conversations with an AI assistant. The key constraints are:
-- Voice conversations require quick, concise responses (not massive data dumps)
-- Data must be contextually relevant and filtered
-- The LLM needs metadata to understand how to use each data source
-- Multiple data sources should have a consistent interface
+A production-quality FastAPI service that provides a **unified interface** for an LLM to access CRM, support ticket, and analytics data through **function calling**. Responses are automatically filtered, prioritized, and optimized for **voice conversations**.
 
 ---
 
-## 📋 Requirements
+## Setup Instructions
 
-### Core Functionality
-1. **FastAPI Server** with health checks and proper error handling
-2. **Multiple Data Connectors** (at least 3 types):
-   - Customer CRM data
-   - Support ticket system
-   - Analytics/metrics data
-3. **Intelligent Data Filtering**:
-   - Automatic pagination for large datasets
-   - Business rules engine to filter data appropriately
-   - Smart summarization for voice contexts
-4. **LLM Function Calling Interface**:
-   - OpenAPI schema generation for function calling
-   - Clear parameter validation
-   - Structured responses with metadata
-5. **Data Type Detection & Handling**:
-   - Identify whether data is tabular, time-series, hierarchical, etc.
-   - Apply appropriate transformations
-   - Include data freshness/staleness indicators
+### Local
 
-### Technical Requirements
-- Python 3.11+
-- FastAPI with Pydantic v2 models
-- Proper logging and error handling
-- Type hints throughout
-- Configuration management (environment variables)
-- Mock data generators included
-- Docker deployment ready
+```bash
+# 1. Clone the repo
+git clone https://github.com/YOUR_USERNAME/universal-data-connector.git
+cd universal-data-connector
 
-### Voice-Optimized Business Rules
-Implement rules like:
-- **Limit results**: Default max 10 items for voice
-- **Prioritization**: Return most recent/relevant first
-- **Summarization**: Aggregate metrics instead of raw data when appropriate
-- **Context awareness**: Include helpful metadata (e.g., "showing 3 of 47 results")
-- **Freshness indicators**: "Data as of 2 hours ago"
+# 2. Install dependencies
+pip install -r requirements.txt
+
+# 3. Copy env file
+cp .env.example .env
+
+# 4. Run the server
+uvicorn app.main:app --reload
+
+# 5. Open Swagger UI
+# Visit: http://localhost:8000/docs
+```
+
+### Docker
+
+```bash
+docker-compose up --build
+# Visit: http://localhost:8000/docs
+```
 
 ---
 
-## 🏗️ Architecture
+## Sample .env File
+
+```
+APP_NAME=Universal Data Connector
+MAX_RESULTS=10
+OPENAI_API_KEY=your_openai_api_key_here  # optional
+```
+
+---
+
+## Data Flow Architecture
+
+```
+User / LLM Query
+      ↓
+FastAPI Server (main.py)
+      ↓
+Router (/data/{source})
+      ↓
+Connector Layer
+├── CRMConnector        → data/customers.json
+├── SupportConnector    → data/support_tickets.json
+└── AnalyticsConnector  → data/analytics.json
+      ↓
+Services Pipeline
+├── BusinessRules       → prioritize, filter, limit to 10
+├── DataIdentifier      → detect time_series / tabular_crm / tabular_support
+└── VoiceOptimizer      → summarize + build voice_summary sentence
+      ↓
+DataResponse (Pydantic)
+├── data[]              → filtered records
+└── metadata
+    ├── total_results
+    ├── returned_results
+    ├── data_type
+    ├── data_freshness
+    ├── voice_summary    ← one sentence, ready to speak aloud
+    └── context_hint
+```
+
+---
+
+## API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| GET | `/health` | Health check |
+| GET | `/data/crm` | Query CRM customers |
+| GET | `/data/support` | Query support tickets |
+| GET | `/data/analytics` | Query analytics metrics |
+| POST | `/data/chat` | Natural language query routing |
+| GET | `/data/schema/functions` | OpenAI-compatible LLM function schemas |
+| GET | `/docs` | Swagger UI |
+
+---
+
+## Example Queries
+
+### 1. Active enterprise customers
+```
+GET /data/crm?status=active&plan=enterprise
+```
+
+### 2. Open high-priority support tickets
+```
+GET /data/support?status=open&priority=high
+```
+
+### 3. Daily active users (last week)
+```
+GET /data/analytics?metric=daily_active_users&date_from=2026-02-10&date_to=2026-02-16
+```
+
+### 4. Natural language chat
+```bash
+POST /data/chat
+{"query": "show me open high priority tickets"}
+```
+
+### 5. LLM function calling schemas
+```
+GET /data/schema/functions
+```
+
+---
+
+## Voice Optimization Rules
+
+| Rule | Detail |
+|------|--------|
+| Limit results | Default max 10 records per response |
+| Prioritization | Open + high-priority tickets first; active customers by MRR |
+| Summarization | Datasets > 10 items condensed to one readable sentence |
+| Freshness | Every response includes a `data_freshness` timestamp |
+| Voice summary | `voice_summary` field is a one-sentence spoken-ready answer |
+
+---
+
+## Scalability (10,000 Users)
+
+Current implementation uses flat JSON files. To scale to 10,000 users:
+
+1. **Database** — Replace JSON with PostgreSQL + async SQLAlchemy
+2. **Caching** — Add Redis layer (TTL = 60s) for frequent queries
+3. **Workers** — Run multiple Uvicorn workers behind Nginx
+4. **Rate limiting** — Per-API-key limits via `slowapi`
+5. **Horizontal scaling** — Docker containers behind AWS ALB with auto-scaling
+6. **Observability** — Prometheus metrics + structured JSON logging
+
+---
+
+## Project Structure
 
 ```
 universal-data-connector/
 ├── app/
-│   ├── main.py                 # FastAPI application entry point
-│   ├── config.py               # Configuration management
-│   ├── models/
-│   │   ├── __init__.py
-│   │   ├── common.py           # Shared models
-│   │   ├── crm.py              # CRM data models
-│   │   ├── support.py          # Support ticket models
-│   │   └── analytics.py        # Analytics models
+│   ├── main.py                  # FastAPI entry point
+│   ├── config.py                # Settings management
 │   ├── connectors/
-│   │   ├── __init__.py
-│   │   ├── base.py             # Base connector interface
-│   │   ├── crm_connector.py    # CRM data connector
+│   │   ├── base.py              # Abstract base connector
+│   │   ├── crm_connector.py
 │   │   ├── support_connector.py
 │   │   └── analytics_connector.py
-│   ├── services/
-│   │   ├── __init__.py
-│   │   ├── data_identifier.py  # Identifies data types
-│   │   ├── business_rules.py   # Business rules engine
-│   │   └── voice_optimizer.py  # Voice-specific optimizations
+│   ├── models/
+│   │   └── common.py            # Pydantic models
 │   ├── routers/
-│   │   ├── __init__.py
 │   │   ├── health.py
-│   │   └── data.py             # Data access endpoints
+│   │   └── data.py              # All data endpoints + LLM schemas
+│   ├── services/
+│   │   ├── business_rules.py    # Filtering + prioritization
+│   │   ├── data_identifier.py   # Data type detection
+│   │   └── voice_optimizer.py   # Summarization
 │   └── utils/
-│       ├── __init__.py
-│       ├── mock_data.py        # Mock data generators
-│       └── logging.py          # Logging configuration
-├── tests/
-│   ├── __init__.py
-│   ├── test_connectors.py
-│   ├── test_business_rules.py
-│   └── test_api.py
+│       └── logging.py
 ├── data/
-│   ├── customers.json          # Sample CRM data
-│   ├── support_tickets.json    # Sample support data
-│   └── analytics.json          # Sample metrics
-├── requirements.txt
+│   ├── customers.json
+│   ├── support_tickets.json
+│   └── analytics.json
+├── tests/
+│   └── test_api.py
+├── .env.example
 ├── Dockerfile
 ├── docker-compose.yml
-├── .env.example
-└── README.md
+└── requirements.txt
 ```
-
----
-
-## 🎓 Learning Objectives
-
-By completing this exercise, you will demonstrate:
-1. **API Design**: Creating clean, RESTful APIs with FastAPI
-2. **Type Safety**: Using Pydantic models and Python type hints
-3. **Abstraction**: Building reusable base classes and interfaces
-4. **Business Logic**: Implementing smart filtering and rules
-5. **LLM Integration**: Understanding function calling patterns
-6. **Production Readiness**: Logging, error handling, configuration
-7. **Voice UX Considerations**: Optimizing for conversational AI
-
----
-
-## ✅ Evaluation Criteria
-
-### Code Quality (30%)
-- Clean, readable code with proper structure
-- Type hints and Pydantic models used correctly
-- Comprehensive error handling
-- Logging throughout
-
-### Functionality (30%)
-- All endpoints working correctly
-- Business rules properly implemented
-- Data filtering and optimization working
-- Mock data realistic and useful
-
-### LLM Integration (20%)
-- OpenAPI schema properly generated
-- Function calling examples work
-- Responses optimized for voice
-- Good parameter validation
-
-### Documentation (20%)
-- Clear README with setup instructions
-- Inline code comments where needed
-- API documentation (auto-generated + custom)
-- Example usage scenarios
-
----
-
-## 🚀 Getting Started
-
-### Phase 1: Setup (Day 1)
-1. Set up project structure
-2. Create base models and connector interface
-3. Implement mock data generators
-4. Get FastAPI running with health check
-
-### Phase 2: Core Connectors (Days 2-3)
-1. Implement CRM connector
-2. Implement support ticket connector
-3. Implement analytics connector
-4. Add data type identification
-
-### Phase 3: Business Rules (Day 4)
-1. Build business rules engine
-2. Implement voice optimizations
-3. Add pagination and filtering
-4. Test with sample queries
-
-### Phase 4: LLM Integration (Day 5)
-1. Create function calling schemas
-2. Test with LLM (Claude or OpenAI)
-3. Optimize response formats
-4. Add metadata and context
-
-### Phase 5: Polish (Day 6)
-1. Add comprehensive logging
-2. Write tests
-3. Create Docker setup
-4. Write documentation
-
----
-
-## 📝 Submission Requirements
-
-1. **GitHub Repository** with:
-   - All source code
-   - README with setup instructions
-   - Sample .env file
-   - Working Docker Compose setup
-
-2. **Demo Video** (5 minutes max):
-   - Show the API running
-   - Demonstrate 3-4 example queries
-   - Show LLM function calling integration
-   - Explain one interesting technical decision
-
-3. **Written Summary** (1 page):
-   - Challenges faced and solutions
-   - Design decisions and tradeoffs
-   - What you'd improve with more time
-   - What you learned
-
----
-
-## 💡 Tips for Success
-
-1. **Start Simple**: Get one connector working end-to-end before adding complexity
-2. **Use Type Hints**: Let your IDE help you catch bugs early
-3. **Test as You Go**: Don't wait until the end to test
-4. **Think About the User**: Would this response make sense in a voice conversation?
-5. **Document Your Thinking**: Add comments explaining "why" not just "what"
-6. **Ask Questions**: If requirements are unclear, make reasonable assumptions and document them
-
----
-
-## 📚 Resources
-
-- [FastAPI Documentation](https://fastapi.tiangolo.com/)
-- [Pydantic V2 Documentation](https://docs.pydantic.dev/)
-- [OpenAI Function Calling Guide](https://platform.openai.com/docs/guides/function-calling)
-- [Anthropic Tool Use Documentation](https://docs.anthropic.com/en/docs/build-with-claude/tool-use)
-
----
-
-## 🎉 Bonus Challenges (Optional)
-
-If you finish early and want to go further:
-1. Add caching layer (Redis) for frequently accessed data
-2. Implement rate limiting per data source
-3. Add streaming responses for large datasets
-4. Create a web UI to test the API
-5. Add authentication and API key management
-6. Implement webhook support for real-time data updates
-7. Add data export functionality (CSV, Excel)
-
-Good luck! We're excited to see what you build. 🚀
-
-## Run locally
-
-```bash
-pip install -r requirements.txt
-uvicorn app.main:app --reload
-```
-
-## Docker
-
-```bash
-docker-compose up --build
-```
-
-Visit: http://localhost:8000/docs
